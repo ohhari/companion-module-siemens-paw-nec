@@ -48,50 +48,6 @@ class PAWNECInstance extends InstanceBase {
 		return [
 		]
 	}
-
-	//Get state from device
-	getState(g_host, g_oid) {
-		var session = new Session({ host: g_host, community: 'public' });
-		session.getNext({ oid: g_oid }, (error, answer) => {
-			if (error) {
-				this.log('error', JSON.stringify(error));
-			} else {
-				let data = 0
-				if (answer[0].value == 1) {
-					data = 'On'
-				} else {
-					data = 'Off'
-				}
-				this.log('info', 'State of Device '  + g_host + ' is ' + data);
-				this.log('debug', 'SNMP-Answer:' + JSON.stringify(answer));
-			}
-		});
-		setTimeout(() => {
-			session.close()
-		}, 500);
-	}
-
-	//Set state of device
-	setState(s_host, s_oid, s_value) {
-		var session = new Session({ host: s_host, community: 'private' });
-		session.set({ oid: s_oid , value: s_value, type: 71 }, (error, data) => {
-			if (error) {
-				this.log('error', JSON.stringify(error));
-			} else {
-				let data = 0
-				if (answer[0].value == 1) {
-					data = 'On'
-				} else {
-					data = 'Off'
-				}
-				this.log('info', 'State of Device '  + s_host + ' set to ' + data);
-				this.log('debug', 'SNMP-Answer:' + JSON.stringify(answer));
-			}
-		});
-		setTimeout(() => {
-			session.close()
-		}, 1000);
-	}
 }
 
 runEntrypoint(PAWNECInstance, [])
