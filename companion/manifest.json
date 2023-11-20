@@ -1,0 +1,26 @@
+{
+	"id": "siemens-paw-nec",
+	"name": "siemens-paw-nec",
+	"shortname": "PAW Streamdeck Integration for NEC-Monitors",
+	"description": "PAW Streamdeck Integration for NEC-Monitors",
+	"version": "0.1.0",
+	"license": "MIT",
+	"repository": "git+https://github.com/ohhari/companion-module-siemens-paw-nec",
+	"bugs": "",
+	"maintainers": [
+		{
+			"name": "PAW Administrators",
+			"email": ""
+		}
+	],
+	"runtime": {
+		"type": "node18",
+		"api": "nodejs-ipc",
+		"apiVersion": "0.0.0",
+		"entrypoint": "../src/index.js"
+	},
+	"legacyIds": [],
+	"manufacturer": "Siemens",
+	"products": ["PAW", "NEC"],
+	"keywords": []
+}
