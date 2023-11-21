@@ -1,6 +1,6 @@
 import { Regex } from '@companion-module/base'
 
-var PD_POWER_STATES = {
+var POWER_STATES = {
     'Error': 0,
     'On': 1,
     'Standby': 2,
@@ -12,7 +12,7 @@ export default function (instance) {
 	return {
 		//Action to set a device state
 		setState: {
-			name: 'Set On',
+			name: 'Set state',
 			options: [
 				{
 					type: 'textinput',
@@ -38,30 +38,41 @@ export default function (instance) {
 				},
 			],
 			callback: async (event) => {
-				instance.log('debug','Set state of Device ' + event.options.device + ' to ' + event.options.state)
-				//instance.setState(event.options.device, '.1.3.6.1.4.1.40595.1.1.2.0', event.options.state)
-
-				/*try {
-					var pd = NECPD.open(read_ip());
-					var monitor_id = 1;
-					pd.helper_set_destination_monitor_id(monitor_id);
-					try {					
-						if (event.options.state == 0) {
-							pd.command_power_status_set(PD_POWER_STATES['Off']);
-						}
-						if (event.options.state == 1) {
-							pd.command_power_status_set(PD_POWER_STATES['On']);
-						}
-						
-						setTimeout(function() {
-							pd.close();
-						}, 1000);
-					} finally {
-						pd.close();
+				instance.log('info','Set state of Device ' + event.options.device + ' to ' + event.options.state)		
+				try {					
+					if (event.options.state == 0) {
+						instance.setPowerState(POWER_STATES['Off']);
 					}
-				} catch (PDError) {
-					instance.log("PDError:", PDError);
-				}*/
+					if (event.options.state == 1) {
+						instance.setPowerState(POWER_STATES['On']);
+					}
+				} catch (err) {
+					instance.log('error', 'Connection error: ' + err);
+				}
+			},
+		},
+		//Action to get a device state
+		getState: {
+			name: 'Get state',
+			options: [
+				{
+					type: 'textinput',
+					label: 'Get Device state',
+					id: 'device',
+					default: '',
+					tooltip: 'Set Device IP',
+					width: 8,
+					regex: Regex.IP,
+				},
+			],
+			callback: async (event) => {
+				instance.log('info','Get state of Device ' + event.options.device)		
+				try {
+					const state = await instance.getPowerState(event.options.device);
+					instance.log('info','The state of Device ' + event.options.device + ' is ' + state)
+				} catch (err) {
+					instance.log('error', 'Connection error: ' + err);
+				}
 			},
 		}
 	}
