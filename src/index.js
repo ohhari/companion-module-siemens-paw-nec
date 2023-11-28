@@ -3,6 +3,14 @@ import getActions from './actions.js'
 import getVariables from './variables.js'
 import { Socket } from 'net'
 
+//Based on https://github.com/NECDisplaySolutions/necpdsdk/blob/master/nec_pd_sdk/
+
+const LUT_HEX_4b = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'];
+const LUT_HEX_8b = new Array(0x100);
+for (let n = 0; n < 0x100; n++) {
+  LUT_HEX_8b[n] = `${LUT_HEX_4b[(n >>> 4) & 0xF]}${LUT_HEX_4b[n & 0xF]}`;
+}
+
 class PAWNECInstance extends InstanceBase {
 	constructor(internal) {
 		super(internal)
@@ -49,7 +57,19 @@ class PAWNECInstance extends InstanceBase {
 		return [
 		]
 	}
+	
+	//Decode Byte to hex
+	toHex(buffer) {
+		let out = '';
+			for (let idx = 0, edx = buffer.length; idx < edx; idx++) {
+				out += '0x'
+				out += LUT_HEX_8b[buffer[idx]];
+				out += ', '
+			}
+		return out;
+	}
 
+	//2 byte Codierung NEC
 	ascii_encode_value_2_bytes(value) {
 		let output_data = []
 		if(!(0 <= value <= 0xff)){
@@ -72,18 +92,16 @@ class PAWNECInstance extends InstanceBase {
     	return output_data
 	}
 
-	ascii_encode_value_4_bytes(value){
-		if (!(0 <= value <= 0xffff)){
-			throw new Error('Invalid value')
-		} 
-		let data = this.ascii_encode_value_2_bytes(value >> 8)
-		data.push(this.ascii_encode_value_2_bytes(value & 0x00ff))
-		return data
+	//2 byte Decodierung NEC
+	convert_bytes_to_2_bytes(byte_1, byte_2) {
+		let output_data = byte_1 * 256 + byte_2
+		return output_data
 	}
 
+	//Decodierung NEC
 	ascii_decode_value(data) {
 		let value = 0
-		for (let byte in data) { 
+		for (let byte of data) { 
 			value *= 16
 			if (48 <= byte <= 57) {
 				value += byte - 48
@@ -99,94 +117,108 @@ class PAWNECInstance extends InstanceBase {
 		return value
 	}
 
+	//Check messsage for NEC
 	getCommand(data, destination_address, message_type){
 		let output_data = []
-		let checksum = 0
-		let length = this.ascii_encode_value_2_bytes(data.length + 2)
-		output_data.push(0x01) //SOH
-		output_data.push(0x30) //fixed
-		output_data.push(destination_address) //destination address
+		//SOH		
+		output_data.push(0x01)
+		//Reserved
+		output_data.push(0x30)
+		//Destination
+		output_data.push(destination_address)
 		this.log('debug', 'Destination address: ' + destination_address)
-		output_data.push(0x30) //source address
+		//Source
+		output_data.push(0x30)
 		this.log('debug', 'Source address: ' + 0x30)
-		output_data.push(message_type) //message type
+		//Message type
+		output_data.push(message_type)
 		this.log('debug', 'Message type: ' + message_type)
-		output_data.push(...length) //message length
-		this.log('debug', 'Message length: ' + length)
-		output_data.push(0x02) //STX
-		output_data.push(...data) //data
-		output_data.push(0x03) //ETX
+		//Message length
+		output_data.push(...this.ascii_encode_value_2_bytes(data.length+ 2))//((data.length+ 2)*1)))
+		this.log('debug', 'Message length: ' + ((data.length + 2)*1))
+		//STX
+		output_data.push(0x02)
+		//Data
+		output_data.push(...data)
+		//ETX
+		output_data.push(0x03)
+		//Checksum
+		let checksum = 0
 		for (let i = 1; i < output_data.length; i++){
 			checksum ^= output_data[i]
 		}
-		output_data.push(checksum) //checksum
-		output_data.push(0x0D) //delimiter
-		this.log('debug','Output data:')
-		for (let item of output_data){
-			this.log('debug', item)
-		}
-		return new Uint8Array(output_data)
+		output_data.push(checksum)
+		this.log('debug','Checksum: ' + checksum)
+		//Delimiter
+		output_data.push(0x0D)
+		let out = new Uint8Array(output_data)
+		this.log('debug','Bytes Request: ' + this.toHex(out))
+		return out
 	}
 
+	//Check answer from NEC
 	readReply(reply) {
-		var data = []
-		var mybuffer = []
-		var buffer = new Buffer.from(reply, 'utf-8')
-		this.log('debug', 'Items: ')
-		for (var i = 0; i < buffer.length; i++){
-			mybuffer.push(buffer[i])
-			this.log('debug', buffer[i])
-		}
+		var buffer = [...new Buffer.from(reply, 'utf-8')]
+		this.log('debug', 'Bytes Answer: ' + this.toHex(buffer))
+		//SOH
 		if (buffer[0] != 0x01) {
 			throw new Error('Wrong SOH')
-		} 
+		}
+		//Reserved		
 		if (buffer[1] != 0x30) {
 			throw new Error('Wrong reserved')
-		} 
+		}
+		//Destination
+		let destination_address
 		if (buffer[3] != 0x41) {
 			throw new Error('Wrong destination address')
-		} 
-		this.log('debug', 'Destination address: ' + buffer[2])
-		this.log('debug', 'Source address: ' + buffer[3])
-		this.log('debug', 'Message type: ' + buffer[4])
-		var length = parseInt((buffer[5] << 4) + buffer[6], 16)
+		} else {
+			destination_address = buffer[3]
+			this.log('debug', 'Destination address: ' + destination_address)	
+		}
+		//Source
+		this.log('debug', 'Source address: ' + buffer[2])
+		//Message type
+		let message_type = buffer[4]
+		this.log('debug', 'Message type: ' + message_type)
+		//Message length
+		let length = this.ascii_decode_value([buffer[5], buffer[6]]) - 2
 		this.log('debug', 'Message length: ' + length)
+		//Data
+		let data = []
 		if (length > 0) {	
+			//STX
 			if (buffer[7] != 0x02){
 				throw new Error('Wrong STX')
-			}
-			//data = (buffer[8] << 4) + buffer[9]
-			data = [buffer[8], buffer[9]]
-			this.log('debug', 'Data: ' + data)
-			if (buffer[10] != 0x03){
-				throw new Error('Wrong ETX')
-			}
-			if (buffer[11] != 0x01){
-				throw new Error('Wrong Checksum' + buffer[11])
-			}
-			if (buffer[12] != 0x0D){
-				throw new Error('Wrong Delimiter')
-			}
-		} else {
-			if (buffer[6] != 0x03){
-				throw new Error('Wrong ETX')
-			}
-			if (buffer[7] != 10){
-				throw new Error('Wrong Checksum')
-			}
-			if (buffer[8] != 0x0D){
-				throw new Error('Wrong Delimiter')
+			}	
+			for(let l= 8;l <= (7 + length); l++){
+				data.push(buffer[l])	
 			}
 		}
-		let answer = []
-		answer.push(data)
-		answer.push(length)
-		answer.push(buffer[4])
-		answer.push(buffer[3])
-		return answer
+		//ETX		
+		let l = 8 + length
+		if (buffer[l] != 0x03){
+			throw new Error('Wrong ETX')
+		}
+		//Checksum
+		let checksum = 0
+		for (let i = 1; i < buffer.length-2; i++){
+			checksum ^= buffer[i]
+		}
+		if (buffer[l+1] != checksum){
+			throw new Error('Wrong Checksum')
+		} else {
+			this.log('debug','Checksum OK')
+		}
+		//Delimiter
+		if (buffer[l+2] != 0x0D){
+			throw new Error('Wrong Delimiter')
+		}
+
+		return [data, length, message_type]
 	}
 
-
+	//Send data to Server
 	async connectToMonitor(command, ip_adress) {
 		return new Promise((resolve, reject) => {
 			let client = new Socket()
@@ -223,63 +255,118 @@ class PAWNECInstance extends InstanceBase {
 		})
 	}
 
+	//Get the power state of a device
 	async getPowerState(destination_ip){
-        let send_data = []
-		send_data.push(...this.ascii_encode_value_4_bytes(0x01D6))
-		this.connectToMonitor(this.getCommand(send_data, 0x41, 0x41), destination_ip)
-			.then((ans) => {
-				try {
-					let reply = this.readReply(ans)
-					let reply_data = reply[0]
-					let reply_data_length = reply[1]
-					let reply_message_type = reply[2]
-					let reply_destination_address = reply[3]
-					if (reply_data_length >= 16) {	//==
-						if ((reply_message_type != 0x42)||(reply_data[1] != 0xC2)||(reply_data[0] != 0xD6)) {
-						//if ((reply_message_type != 0x42)||(reply_data.slice(0, 4) != this.ascii_encode_value_4_bytes((0x00C2)))||(reply_data.slice(4, 8) != this.ascii_encode_value_4_bytes((0xD600)))) {
-							throw new Error('Unexpected reply received' + reply_data[1] + ' ' + 0xC2 + ' ' + reply_data[0] +' ' + 0xD6 + ' ')
+		return new Promise ((resolve, reject) => {
+			let send_data = []
+			send_data.push(...this.ascii_encode_value_2_bytes(0x01)) //0x01D6
+			send_data.push(...this.ascii_encode_value_2_bytes(0xD6)) 
+			this.connectToMonitor(this.getCommand(send_data, 0x41, 0x41), destination_ip)
+				.then((ans) => {
+					try {
+						let reply = this.readReply(ans)
+						let reply_data = reply[0]
+						let reply_data_length = reply[1]
+						let reply_message_type = reply[2]
+						if (reply_data_length == 16) {
+							if (reply_message_type != 0x42) {
+								reject('Unexpected message type received')
+							} else if (([reply_data[0], reply_data[1]].toString() != this.ascii_encode_value_2_bytes(0x02).toString())&&([reply_data[2], reply_data[3]].toString() != this.ascii_encode_value_2_bytes(0x00).toString())) {
+								reject('Unexpected error 1 received')
+							} else if (([reply_data[4], reply_data[5]].toString() != this.ascii_encode_value_2_bytes(0xD6).toString())&&([reply_data[6], reply_data[7]].toString() != this.ascii_encode_value_2_bytes(0x00).toString())) {
+								reject('Unexpected error 2 received')
+							} else {
+								resolve(this.ascii_decode_value([reply_data[12], reply_data[13], reply_data[14], reply_data[15]]))
+							}
 						} else {
-							return this.ascii_decode_value(reply_data.slice(12, 12 + 4))
+							reject('Unexpected reply length: ' + reply_data.length + ' (expected 16)')
 						}
-					} else {
-						throw new Error('Unexpected reply length: ' + reply_data.length + ' (expected 16)')
+					} catch (err) {
+						reject('Unexpected reply: ' + err)
 					}
-				} catch (err) {
-					throw new Error('Unexpected reply: ' + err)
-				}
-
-			})
-			.catch((err) => {
-				throw new Error(err)
-			})
+				})
+				.catch((err) => {
+					reject(err)
+				})
+		})
 	}
 
+	//Get the power state of a device
     async setPowerState(state, destination_ip){
-        let send_data = []
-        send_data.push(...this.ascii_encode_value_2_bytes(0xC2))
-		send_data.push(...this.ascii_encode_value_2_bytes(0x03D6))
-		send_data.push(...this.ascii_encode_value_2_bytes(state))
-		this.connectToMonitor(this.getCommand(send_data, 0x41, 0x41), destination_ip)
-			.then((reply) => {
-				this.log('debug', reply)
-				let reply_data = reply[0]
-				let reply_message_type = reply[1]
-				let reply_destination_address = reply[2]
-				if (reply_data.length == 12) {
-					if ((reply_message_type != 0x42)||(reply_data[1] != 0xC2)||(reply_data[0] != 0xD6)) {//=> war anders
-					//if ((reply_message_type != 0x42)||(reply_data.slice(0, 4) != this.ascii_encode_value_4_bytes((0x00C2)))||(reply_data.slice(4, 8) != this.ascii_encode_value_4_bytes((0xD600)))) {
-						throw new Error('Unexpected reply received' + reply_data[1] +' ' +0xC2)
+		return new Promise ((resolve, reject) => {
+			let send_data = []
+			send_data.push(...this.ascii_encode_value_2_bytes(0xC2))
+			send_data.push(...this.ascii_encode_value_2_bytes(0x03)) //0x03D6
+			send_data.push(...this.ascii_encode_value_2_bytes(0xD6))
+			send_data.push(...this.ascii_encode_value_2_bytes(0x00))
+			send_data.push(...this.ascii_encode_value_2_bytes(0x01))//state))
+			this.connectToMonitor(this.getCommand(send_data, 0x41, 0x41), destination_ip)
+				.then((ans) => {
+					let reply = this.readReply(ans)
+					let reply_data = reply[0]
+					let reply_message_type = reply[1]
+					if (reply_data.length == 12) {
+						if (reply_message_type != 0x42) {
+							reject('Unexpected message type received')
+						} else if (([reply_data[0], reply_data[1]].toString() != this.ascii_encode_value_2_bytes(0x00).toString())&&([reply_data[2], reply_data[3]].toString() != this.ascii_encode_value_2_bytes(0xC2).toString())) {
+							reject('Unexpected error 1 received')
+						} else if (([reply_data[4], reply_data[5]].toString() != this.ascii_encode_value_2_bytes(0x03).toString())&&([reply_data[6], reply_data[7]].toString() != this.ascii_encode_value_2_bytes(0xD6).toString())) {
+							reject('Unexpected error 2 received')
+						} else {
+							resolve(this.ascii_decode_value([reply_data[8], reply_data[9], reply_data[10], reply_data[11]]))
+						}
 					} else {
-						return this.ascii_decode_value(reply_data.slice(8, 8 + 4))
+						reject('Unexpected reply length: ' + reply_data.length + ' (expected 12)');
 					}
-				} else {
-					throw new Error('Unexpected reply length: ' + reply_data.length + ' (expected 12)');
-				}
-			})
-			.catch((err) => {
-				throw new Error(err)
-			})
+				})
+				.catch((err) => {
+					reject(err)
+				})
+		})
     } 
+
+	//Send a IR remote control code
+	async sendCode(code, destination_ip){
+		return new Promise ((resolve, reject) => {
+			//let code_arr = this.from4BytesTo2Bytes(code)
+			//let code_1 = code_arr[0]
+			//let code_2 = code_arr[1]
+			let send_data = []
+			send_data.push(...this.ascii_encode_value_2_bytes(0xC2))
+			send_data.push(...this.ascii_encode_value_2_bytes(0x10))
+			//send_data.push(...this.ascii_encode_value_2_bytes(code_1))
+			send_data.push(...this.ascii_encode_value_2_bytes(0x00))//
+			send_data.push(...this.ascii_encode_value_2_bytes(code))//code2
+			send_data.push(...this.ascii_encode_value_2_bytes(0x03))
+			this.connectToMonitor(this.getCommand(send_data, 0x41, 0x41), destination_ip)
+				.then((ans) => {
+					let reply = this.readReply(ans)
+					let reply_data = reply[0]
+					if (reply_data.length >= 8) {
+						if (((reply_data[0] - 48) != 0xC3)&&((reply_data[1] - 48) != 0x10)) {
+							reject('Unexpected error 1 received')
+						} else if (((reply_data[2] - 48) != code_1)&&((reply_data[3] - 48) != code_2)) {
+							reject('Unexpected error 2 received')
+						} else {
+							resolve()
+						}
+					} else if (reply_data.length >= 12){
+						if (((reply_data[2] - 48) != 0xC2)&&((reply_data[3] - 48) != 0x10)) {
+							reject('Unexpected error 1 received')
+						} else if (((reply_data[4] - 48) != code_1)&&((reply_data[5] - 48) != code_2)) {
+							reject('Unexpected error 2 received')
+						} else {
+							resolve()
+						}
+					} else {
+						reject('Unexpected reply length: ' + reply_data.length + ' (expected 8)');
+					}
+				})
+				.catch((err) => {
+					reject(err)
+				})
+		})
+	}
 }
 
 runEntrypoint(PAWNECInstance, [])
