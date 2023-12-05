@@ -110,7 +110,7 @@ export default function (instance) {
 			callback: async (event) => {
 				instance.log('info','Send code ' + event.options.code + '  to Device ' + event.options.device)		
 				try {
-					await instance.getPowerState(event.options.code, event.options.device);
+					await instance.sendIRCode(event.options.code, event.options.device);
 					instance.log('info','Executed Code ' + event.options.code + ' on Device ' + event.options.device)
 				} catch (err) {
 					instance.log('error', 'Connection error: ' + err);

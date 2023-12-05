@@ -92,25 +92,19 @@ class PAWNECInstance extends InstanceBase {
     	return output_data
 	}
 
-	//2 byte Decodierung NEC
-	convert_bytes_to_2_bytes(byte_1, byte_2) {
-		let output_data = byte_1 * 256 + byte_2
-		return output_data
-	}
-
 	//Decodierung NEC
 	ascii_decode_value(data) {
 		let value = 0
-		for (let byte of data) { 
+		for (let byte of data) {
 			value *= 16
-			if (48 <= byte <= 57) {
+			if ((48 <= byte) && (byte <= 57)) {
 				value += byte - 48
-			} else if (65 <= byte <= 72) {
+			} else if ((65 <= byte) && (byte <= 72)) {
 					value += byte - 65 + 10
-			} else if (97 <= byte <= 104) {
+			} else if ((97 <= byte) && (byte <= 104)) {
 					value += byte - 97 + 10
 			} else {
-				this.log('error','Invalid hex character: ' + byte)
+				this.log('error','invalid hex character: ' + value)
 				value = 0
 			}
 		}
@@ -134,8 +128,8 @@ class PAWNECInstance extends InstanceBase {
 		output_data.push(message_type)
 		this.log('debug', 'Message type: ' + message_type)
 		//Message length
-		output_data.push(...this.ascii_encode_value_2_bytes(data.length+ 2))//((data.length+ 2)*1)))
-		this.log('debug', 'Message length: ' + ((data.length + 2)*1))
+		output_data.push(...this.ascii_encode_value_2_bytes(data.length+ 2))
+		this.log('debug', 'Message length: ' + (data.length + 2))
 		//STX
 		output_data.push(0x02)
 		//Data
@@ -221,8 +215,8 @@ class PAWNECInstance extends InstanceBase {
 	//Send data to Server
 	async connectToMonitor(command, ip_adress) {
 		return new Promise((resolve, reject) => {
-			let client = new Socket()
-			let answer = ''		
+			let answer = ''
+			let client = new Socket()		
 			client.connect(7142, ip_adress, async () => {
 				this.log('debug', 'Connect to Server...')
 				client.write(command)
@@ -246,12 +240,13 @@ class PAWNECInstance extends InstanceBase {
 			})
 
 			setTimeout(() => {
+				client.end()
 				if (answer != '') {
 					resolve(answer)
 				} else {
 					reject('No answer from server')						
 				}
-			}, 1000)
+			}, 200)
 		})
 	}
 
@@ -291,7 +286,7 @@ class PAWNECInstance extends InstanceBase {
 		})
 	}
 
-	//Get the power state of a device
+	//Set the power state of a device
     async setPowerState(state, destination_ip){
 		return new Promise ((resolve, reject) => {
 			let send_data = []
@@ -299,13 +294,15 @@ class PAWNECInstance extends InstanceBase {
 			send_data.push(...this.ascii_encode_value_2_bytes(0x03)) //0x03D6
 			send_data.push(...this.ascii_encode_value_2_bytes(0xD6))
 			send_data.push(...this.ascii_encode_value_2_bytes(0x00))
-			send_data.push(...this.ascii_encode_value_2_bytes(0x01))//state))
+			send_data.push(...this.ascii_encode_value_2_bytes(state))	
 			this.connectToMonitor(this.getCommand(send_data, 0x41, 0x41), destination_ip)
 				.then((ans) => {
 					let reply = this.readReply(ans)
 					let reply_data = reply[0]
-					let reply_message_type = reply[1]
-					if (reply_data.length == 12) {
+					let reply_data_length = reply[1]
+					let reply_message_type = reply[2]
+					this.log('debug', 'Connection to Server closed...' + reply_message_type)
+					if (reply_data_length == 12) {
 						if (reply_message_type != 0x42) {
 							reject('Unexpected message type received')
 						} else if (([reply_data[0], reply_data[1]].toString() != this.ascii_encode_value_2_bytes(0x00).toString())&&([reply_data[2], reply_data[3]].toString() != this.ascii_encode_value_2_bytes(0xC2).toString())) {
@@ -326,34 +323,31 @@ class PAWNECInstance extends InstanceBase {
     } 
 
 	//Send a IR remote control code
-	async sendCode(code, destination_ip){
+	async sendIRCode(code, destination_ip){
 		return new Promise ((resolve, reject) => {
-			//let code_arr = this.from4BytesTo2Bytes(code)
-			//let code_1 = code_arr[0]
-			//let code_2 = code_arr[1]
 			let send_data = []
-			send_data.push(...this.ascii_encode_value_2_bytes(0xC2))
+			send_data.push(...this.ascii_encode_value_2_bytes(0xC2)) //0xC210
 			send_data.push(...this.ascii_encode_value_2_bytes(0x10))
-			//send_data.push(...this.ascii_encode_value_2_bytes(code_1))
-			send_data.push(...this.ascii_encode_value_2_bytes(0x00))//
-			send_data.push(...this.ascii_encode_value_2_bytes(code))//code2
+			send_data.push(...this.ascii_encode_value_2_bytes(0x00))
+			send_data.push(...this.ascii_encode_value_2_bytes(code))
 			send_data.push(...this.ascii_encode_value_2_bytes(0x03))
 			this.connectToMonitor(this.getCommand(send_data, 0x41, 0x41), destination_ip)
 				.then((ans) => {
 					let reply = this.readReply(ans)
 					let reply_data = reply[0]
-					if (reply_data.length >= 8) {
-						if (((reply_data[0] - 48) != 0xC3)&&((reply_data[1] - 48) != 0x10)) {
+					let reply_data_length = reply[1]
+					if (reply_data_length == 8) {
+						if (([reply_data[0], reply_data[1]].toString() != this.ascii_encode_value_2_bytes(0xC3).toString())&&([reply_data[2], reply_data[3]].toString() != this.ascii_encode_value_2_bytes(0x10).toString())) {
 							reject('Unexpected error 1 received')
-						} else if (((reply_data[2] - 48) != code_1)&&((reply_data[3] - 48) != code_2)) {
+						} else if (([reply_data[4], reply_data[5]].toString() != this.ascii_encode_value_2_bytes(0x00).toString())&&([reply_data[6], reply_data[7]].toString() != this.ascii_encode_value_2_bytes(code).toString())) {
 							reject('Unexpected error 2 received')
 						} else {
 							resolve()
 						}
-					} else if (reply_data.length >= 12){
-						if (((reply_data[2] - 48) != 0xC2)&&((reply_data[3] - 48) != 0x10)) {
+					} else if (reply_data_length == 12){
+						if (([reply_data[2], reply_data[3]].toString() != this.ascii_encode_value_2_bytes(0xC2).toString())&&([reply_data[4], reply_data[5]].toString() != this.ascii_encode_value_2_bytes(0x10).toString())) {
 							reject('Unexpected error 1 received')
-						} else if (((reply_data[4] - 48) != code_1)&&((reply_data[5] - 48) != code_2)) {
+						} else if (([reply_data[6], reply_data[7]].toString() != this.ascii_encode_value_2_bytes(0x00).toString())&&([reply_data[8], reply_data[9]].toString() != this.ascii_encode_value_2_bytes(code).toString())) {
 							reject('Unexpected error 2 received')
 						} else {
 							resolve()
