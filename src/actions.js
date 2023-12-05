@@ -9,20 +9,20 @@ const POWER_STATES = [
 ]
 
 const PD_IR_COMMAND_CODES = [
-    {id: 0x03, label: 'power'},
-	{id: 0x4e, label: 'standby'},
-	{id: 0x52, label: 'power_on'},
-	{id: 0x17, label: 'vol+'},
-	{id: 0x16, label: 'vol-'},
-	{id: 0x1b, label: 'mute'},
-	{id: 0x65, label: 'dvi1'},
-	{id: 0x5b, label: 'dvi2'},
-	{id: 0x64, label: 'hdmi1'},
-	{id: 0x58, label: 'hdmi2'},
-	{id: 0x59, label: 'hdmi3'},
-	{id: 0x5a, label: 'hdmi4'},
-	{id: 0x66, label: 'displayport1'},
-	{id: 0x67, label: 'displayport2'},
+    {id: 0x03, label: 'Power'},
+	{id: 0x4e, label: 'Standby'},
+	{id: 0x52, label: 'Power on'},
+	{id: 0x17, label: 'Volume +'},
+	{id: 0x16, label: 'Volume -'},
+	{id: 0x1b, label: 'Mute'},
+	{id: 0x65, label: 'DVI 1'},
+	{id: 0x5b, label: 'DVI 2'},
+	{id: 0x64, label: 'HDMI 1'},
+	{id: 0x58, label: 'HDMI 2'},
+	{id: 0x59, label: 'HDMI 3'},
+	{id: 0x5a, label: 'HDMI 4'},
+	{id: 0x66, label: 'DP 1'},
+	{id: 0x67, label: 'DP 2'},
 ]
 
 export default function (instance) {
@@ -84,7 +84,7 @@ export default function (instance) {
 				}
 			},
 		},
-		//Action to send a code to a device
+		//Action to send an IR code to a device
 		sendCode: {
 			name: 'Send code',
 			options: [

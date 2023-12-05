@@ -72,7 +72,7 @@ class PAWNECInstance extends InstanceBase {
 	//2 byte Codierung NEC
 	ascii_encode_value_2_bytes(value) {
 		let output_data = []
-		if(!(0 <= value <= 0xff)){
+		if(!((0 <= value) && (value <= 0xff))){
 			throw new Error('Invalid value')
 		} 
 		let val = value >> 4
